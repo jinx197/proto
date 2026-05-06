@@ -1,0 +1,28 @@
+syntax = "v1"
+
+type Request {
+	Name string `path:"name"`
+}
+
+type Response {
+	Message string `json:"message"`
+}
+
+type (
+	DeptCountRequest {
+		Dept string `json:"dept"`
+	}
+	DeptCountResponse {
+		Dept  string `json:"dept"`
+		Count int    `json:"count"`
+	}
+)
+
+service helloapi-api {
+	@handler HelloapiHandler
+	get /hello/:name (Request) returns (Response)
+
+	@handler getDeptCountHandler
+	get /api/dept/count (DeptCountRequest) returns (DeptCountResponse)
+}
+

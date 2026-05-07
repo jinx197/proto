@@ -1,0 +1,21 @@
+# Claude Code 本地设置（包含个人 MCP 配置和权限）
+.claude/settings.local.json
+
+# Go 编译产物
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

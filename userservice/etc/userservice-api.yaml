@@ -1,0 +1,8 @@
+Name: userservice-api
+Host: 0.0.0.0
+Port: 8081   # 改用 8081，避免端口冲突
+
+Etcd:
+  Hosts:
+    - 127.0.0.1:2379
+  Key: userservice-api

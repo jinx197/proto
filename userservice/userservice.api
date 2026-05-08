@@ -1,0 +1,18 @@
+syntax = "v1"
+
+type (
+	UserRequest {
+		Id int64 `json:"id"`
+	}
+	UserResponse {
+		Id   int64  `json:"id"`
+		Name string `json:"name"`
+		Age  int    `json:"age"`
+	}
+)
+
+service userservice {
+	@handler getUserHandler
+	post /api/user/getUser (UserRequest) returns (UserResponse)
+}
+

@@ -5,6 +5,7 @@ package logic
 
 import (
 	"context"
+	"helloapi/internal/model"
 
 	"helloapi/internal/svc"
 	"helloapi/internal/types"
@@ -26,8 +27,14 @@ func NewGetDeptCountLogic(ctx context.Context, svcCtx *svc.ServiceContext) *GetD
 	}
 }
 
-func (l *GetDeptCountLogic) GetDeptCount(req *types.DeptCountRequest) (resp *types.DeptCountResponse, err error) {
-	// todo: add your logic here and delete this line
+func (l *GetDeptCountLogic) GetDeptCount(req *types.DeptCountRequest) (*types.DeptCountResponse, error) {
+	var count int64
+	l.svcCtx.DB.Model(&model.Employee{}).
+		Where("dept = ?", req.Dept).
+		Count(&count)
 
-	return
+	return &types.DeptCountResponse{
+		Dept:  req.Dept,
+		Count: int(count),
+	}, nil
 }

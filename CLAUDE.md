@@ -46,7 +46,7 @@ curl "http://localhost:8080/api/dept/count?dept=研发部"
 ```
 helloapi/
 ├── etc/
-│   └── helloapi.yaml        # 服务配置（包含 etcd 注册信息）
+│   └── helloapi-api.yaml        # 服务配置（包含 etcd 注册信息）
 ├── internal/
 │   ├── config/config.go      # 配置定义（嵌入 rest.RestConf）
 │   ├── handler/              # 路由处理逻辑（生成，勿手动编辑）

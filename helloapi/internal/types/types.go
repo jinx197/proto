@@ -4,7 +4,7 @@
 package types
 
 type DeptCountRequest struct {
-	Dept string `json:"dept"`
+	Dept string `form:"dept"`
 }
 
 type DeptCountResponse struct {

@@ -8,15 +8,14 @@ type Response {
 	Message string `json:"message"`
 }
 
-type (
-	DeptCountRequest {
-		Dept string `json:"dept"`
-	}
-	DeptCountResponse {
-		Dept  string `json:"dept"`
-		Count int    `json:"count"`
-	}
-)
+type DeptCountRequest {
+	Dept string `form:"dept"`
+}
+
+type DeptCountResponse {
+	Dept  string `json:"dept"`
+	Count int    `json:"count"`
+}
 
 service helloapi-api {
 	@handler HelloapiHandler

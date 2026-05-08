@@ -1,9 +1,0 @@
-Name: helloapi
-Host: 0.0.0.0
-Port: 8080
-
-# etcd 配置 - 重点关注这部分
-Etcd:
-  Hosts:
-    - 127.0.0.1:2379
-  Key: helloapi

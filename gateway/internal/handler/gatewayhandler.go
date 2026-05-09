@@ -6,22 +6,22 @@ package handler
 import (
 	"net/http"
 
+	"gateway/internal/logic"
+	"gateway/internal/svc"
+	"gateway/internal/types"
 	"github.com/zeromicro/go-zero/rest/httpx"
-	"userservice/internal/logic"
-	"userservice/internal/svc"
-	"userservice/internal/types"
 )
 
-func getUserHandler(svcCtx *svc.ServiceContext) http.HandlerFunc {
+func GatewayHandler(svcCtx *svc.ServiceContext) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var req types.UserRequest
+		var req types.Request
 		if err := httpx.Parse(r, &req); err != nil {
 			httpx.ErrorCtx(r.Context(), w, err)
 			return
 		}
 
-		l := logic.NewGetUserLogic(r.Context(), svcCtx)
-		resp, err := l.GetUser(&req)
+		l := logic.NewGatewayLogic(r.Context(), svcCtx)
+		resp, err := l.Gateway(&req)
 		if err != nil {
 			httpx.ErrorCtx(r.Context(), w, err)
 		} else {

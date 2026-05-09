@@ -7,7 +7,7 @@ import (
 	"context"
 
 	"userservice/internal/svc"
-	"userservice/internal/types"
+	"userservice/pb/user"
 
 	"github.com/zeromicro/go-zero/core/logx"
 )
@@ -26,10 +26,10 @@ func NewGetUserLogic(ctx context.Context, svcCtx *svc.ServiceContext) *GetUserLo
 	}
 }
 
-func (l *GetUserLogic) GetUser(req *types.UserRequest) (resp *types.UserResponse, err error) {
+func (l *GetUserLogic) GetUser(in *user.UserRequest) (*user.UserResponse, error) {
 	// 模拟数据库查询
-	return &types.UserResponse{
-		Id:   req.Id,
+	return &user.UserResponse{
+		Id:   in.Id,
 		Name: "ZhangSan",
 		Age:  25,
 	}, nil

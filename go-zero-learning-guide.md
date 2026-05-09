@@ -160,7 +160,7 @@ go run helloapi.go -f etc/helloapi-api.yaml
 
 ```bash
 # 查看 etcd 中的服务注册
-etcdctl get --prefix /registry/services
+etcdctl get --prefix ""
 ```
 
 应该能看到 `helloapi-api` 的注册信息。
@@ -225,8 +225,8 @@ package logic
 
 import (
     "context"
-    "go-zero-learning/helloapi/internal/svc"
-    "go-zero-learning/helloapi/internal/types"
+    "helloapi/internal/svc"
+    "helloapi/internal/types"
 )
 
 type GetDeptCountLogic struct {
@@ -310,7 +310,7 @@ package svc
 import (
     "gorm.io/driver/mysql"
     "gorm.io/gorm"
-    "go-zero-learning/helloapi/internal/config"
+    "helloapi/internal/config"
 )
 
 type ServiceContext struct {
@@ -526,7 +526,7 @@ type (
 
 service userservice {
     @handler getUserHandler
-    get /api/user/getUser (UserRequest) returns (UserResponse)
+    psot /api/user/getUser (UserRequest) returns (UserResponse)
 }
 ```
 
@@ -563,8 +563,8 @@ package logic
 import (
     "context"
 
-    "go-zero-learning/userservice/internal/svc"
-    "go-zero-learning/userservice/pb/user"
+    "userservice/internal/svc"
+    "userservice/pb/user"
 
     "github.com/zeromicro/go-zero/zrpc"
 )
@@ -600,8 +600,10 @@ go run userservice.go -f etc/userservice.yaml
 验证：
 
 ```bash
-etcdctl get --prefix /registry/services
-curl http://localhost:8081/api/user/getUser -X POST -d '{"id":1}'
+etcdctl get --prefix ""
+curl curl http://localhost:8081/api/user/getUser -X POST \
+    -H "Content-Type: application/json" \
+    -d '{"id":1}'
 ```
 
 ### 4.8 创建网关服务（gateway）
@@ -668,7 +670,167 @@ type Config struct {
 }
 ```
 
-### 4.12 创建 RPC 客户端代理
+### 4.12 生成 protobuf 代码
+
+首先确保项目根目录有 `go.work`，让各服务可以互相引用：
+
+```bash
+cd go-zero-learning
+go work init
+go work use ./helloapi ./userservice ./gateway
+```
+
+> 因为 helloapi、userservice、gateway 是单独的 Go module，需要 go workspace 才能跨模块 import。
+
+删除 userservice 中旧的 API 相关文件（RPC 服务不再需要这些）：
+
+```bash
+cd userservice
+rm -rf internal/handler internal/types userservice.go
+```
+
+创建 proto 文件 `userservice/pb/user/user.proto`：
+
+```protobuf
+syntax = "proto3";
+
+package user;
+
+option go_package = "userservice/pb/user";
+
+message UserRequest {
+    int64 id = 1;
+}
+
+message UserResponse {
+    int64 id = 1;
+    string name = 2;
+    int32 age = 3;
+}
+
+service User {
+    rpc GetUser (UserRequest) returns (UserResponse);
+}
+```
+
+> 注意：`go_package` 要写成模块全路径 `userservice/pb/user`，不要用 `./pb/user`，否则生成的 pb 文件会嵌套到 `pb/pb/user/` 目录。
+
+生成 Go 代码：
+
+```bash
+cd userservice
+goctl rpc protoc pb/user/user.proto \
+    --go_out=. --go-grpc_out=. \
+    --go_opt=module=userservice --go-grpc_opt=module=userservice \
+    --zrpc_out=.
+```
+
+> 说明：`--go_opt=module=userservice` 会让 protoc 根据 go_package 路径剥离模块前缀，将文件正确输出到 `pb/user/`（而不是 `userservice/pb/user/`）。
+
+goctl rpc protoc 会自动生成以下文件：
+
+```
+internal/config/config.go       # 覆盖：改用 RpcServerConf
+internal/server/userserver.go   # RPC server 桩，调用 logic
+user.go                         # RPC 主入口（package main）
+userclient/user.go              # RPC 客户端代理
+pb/user/user.pb.go              # protobuf 生成
+pb/user/user_grpc.pb.go         # gRPC 生成
+```
+
+### 4.13 手动修改：config 和 logic
+
+goctl 生成骨架代码后，有两个文件需要手动修改：
+
+**4.13.1 修改 config.go**
+
+`internal/config/config.go` 原本是 API 服务的 `rest.RestConf`，需要改成 RPC 的 `zrpc.RpcServerConf`：
+
+```go
+package config
+
+import (
+    "github.com/zeromicro/go-zero/zrpc"
+)
+
+type Config struct {
+    zrpc.RpcServerConf
+}
+```
+
+**4.13.2 修改 getuserlogic.go**
+
+`internal/logic/getuserlogic.go` 原本引用的是 API 的 `types.UserRequest/UserResponse`，需要改成 protobuf 类型：
+
+```go
+package logic
+
+import (
+    "context"
+
+    "userservice/internal/svc"
+    "userservice/pb/user"
+
+    "github.com/zeromicro/go-zero/core/logx"
+)
+
+type GetUserLogic struct {
+    logx.Logger
+    ctx    context.Context
+    svcCtx *svc.ServiceContext
+}
+
+func NewGetUserLogic(ctx context.Context, svcCtx *svc.ServiceContext) *GetUserLogic {
+    return &GetUserLogic{
+        Logger: logx.WithContext(ctx),
+        ctx:    ctx,
+        svcCtx: svcCtx,
+    }
+}
+
+func (l *GetUserLogic) GetUser(in *user.UserRequest) (*user.UserResponse, error) {
+    // 模拟数据库查询
+    return &user.UserResponse{
+        Id:   in.Id,
+        Name: "ZhangSan",
+        Age:  25,
+    }, nil
+}
+```
+
+### 4.14 验证 RPC 配置和入口
+
+goctl rpc protoc 已自动生成 `user.go`（RPC 入口）和 `etc/user.yaml`（RPC 配置模板）。查看生成的文件确认无误：
+
+`user.go` 关键部分（已自动生成，无需手动编写）：
+
+```go
+var configFile = flag.String("f", "etc/user.yaml", "the config file")
+
+func main() {
+    // ...
+    s := zrpc.MustNewServer(c.RpcServerConf, func(grpcServer *grpc.Server) {
+        user.RegisterUserServer(grpcServer, server.NewUserServer(ctx))
+        // ...
+    })
+    s.Start()
+}
+```
+
+`etc/user.yaml` 配置模板：
+
+```yaml
+Name: user.rpc
+ListenOn: 0.0.0.0:8080
+Etcd:
+  Hosts:
+  - 127.0.0.1:2379
+  Key: user.rpc
+```
+
+根据实际需要调整端口和 etcd 配置。
+
+### 4.15 创建 RPC 客户端代理
 
 在 `gateway/internal/svc/servicecontext.go` 中：
 
@@ -677,8 +839,8 @@ package svc
 
 import (
     "github.com/zeromicro/go-zero/zrpc"
-    "go-zero-learning/gateway/internal/config"
-    "go-zero-learning/userservice/pb/user"
+    "gateway/internal/config"
+    "userservice/pb/user"
 )
 
 type ServiceContext struct {
@@ -694,7 +856,7 @@ func NewServiceContext(c config.Config) *ServiceContext {
 }
 ```
 
-### 4.13 修改 handler 调用 RPC
+### 4.16 修改 handler 调用 RPC
 
 编辑 `gateway/internal/handler/getuserhandler.go`：
 
@@ -705,9 +867,9 @@ import (
     "net/http"
 
     "github.com/zeromicro/go-zero/rest"
-    "go-zero-learning/gateway/internal/logic"
-    "go-zero-learning/gateway/internal/svc"
-    "go-zero-learning/gateway/internal/types"
+    "gateway/internal/logic"
+    "gateway/internal/svc"
+    "gateway/internal/types"
 )
 
 func getUserHandler(svcCtx *svc.ServiceContext) http.HandlerFunc {
@@ -741,123 +903,6 @@ func getUserHandler(svcCtx *svc.ServiceContext) http.HandlerFunc {
 }
 ```
 
-### 4.14 生成 protobuf 代码
-
-需要在 userservice 中定义 proto 文件。先用 goctl 生成 proto 模板，创建 `userservice/pb/user/user.proto`：
-
-```protobuf
-syntax = "proto3";
-
-package user;
-
-option go_package = "./pb/user";
-
-message UserRequest {
-    int64 id = 1;
-}
-
-message UserResponse {
-    int64 id = 1;
-    string name = 2;
-    int32 age = 3;
-}
-
-service User {
-    rpc GetUser (UserRequest) returns (UserResponse);
-}
-```
-
-生成 Go 代码（使用 goctl rpc protoc，会自动处理插件依赖）：
-
-```bash
-cd userservice
-# 使用 goctl rpc protoc 生成 gRPC 代码
-goctl rpc protoc pb/user/user.proto --go_out=./pb --go-grpc_out=./pb --zrpc_out=.
-```
-
-### 4.15 修改 userservice 为 RPC 服务
-
-编辑 `userservice/internal/svc/servicecontext.go`：
-
-```go
-package svc
-
-import (
-    "context"
-    "github.com/zeromicro/go-zero/zrpc"
-    "go-zero-learning/userservice/internal/config"
-    "go-zero-learning/userservice/pb/user"
-)
-
-type ServiceContext struct {
-    Config config.Config
-}
-
-func NewServiceContext(c config.Config) *ServiceContext {
-    return &ServiceContext{}
-}
-```
-
-创建一个 RPC server 来处理请求。编辑 `userservice/internal/server/user/user_server.go`：
-
-```go
-package user
-
-import (
-    "context"
-)
-
-type Server struct {
-    UnimplementedUserServer
-}
-
-func (s *Server) GetUser(ctx context.Context, req *UserRequest) (*UserResponse, error) {
-    return &UserResponse{
-        Id:   req.Id,
-        Name: "ZhangSan",
-        Age:  25,
-    }, nil
-}
-```
-
-### 4.16 修改 userservice.go 启动 RPC server
-
-```go
-package main
-
-import (
-    "flag"
-    "fmt"
-
-    "go-zero-learning/userservice/internal/config"
-    "go-zero-learning/userservice/internal/server"
-    "go-zero-learning/userservice/internal/svc"
-    "go-zero-learning/userservice/pb/user"
-
-    "github.com/zeromicro/go-zero/core/conf"
-    "github.com/zeromicro/go-zero/zrpc"
-    "google.golang.org/grpc"
-)
-
-var configFile = flag.String("f", "etc/userservice.yaml", "the config file")
-
-func main() {
-    flag.Parse()
-
-    var c config.Config
-    conf.MustLoad(*configFile, &c)
-
-    ctx := svc.NewServiceContext(c)
-
-    // 启动 gRPC server 并通过 etcd 注册
-    s := zrpc.MustNewServer(c.RpcServerConf, func(grpcServer *grpc.Server) {
-        user.RegisterUserServer(grpcServer, &user.Server{})
-    })
-    defer s.Stop()
-    s.Start()
-}
-```
-
 ### 4.17 启动两个服务
 
 终端1：启动 userservice
@@ -887,7 +932,7 @@ curl http://localhost:8080/api/user/getUser?id=1
 ### 4.19 验证 etcd 注册
 
 ```bash
-etcdctl get --prefix /registry/services
+etcdctl get --prefix ""
 ```
 
 应该能看到 gateway 和 userservice 两个服务。
